@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Site BuildName="Linux-clang++"
+	BuildStamp="20230814-0138-Experimental"
+	Name="houdinipc"
+	Generator="ctest-3.26.4"
+	CompilerName="/usr/bin/clang++"
+	CompilerVersion="15.0.7"
+	OSName="Linux"
+	Hostname="houdinipc"
+	OSRelease="6.1.31-2-MANJARO"
+	OSVersion="#1 SMP PREEMPT_DYNAMIC Sun Jun  4 12:31:46 UTC 2023"
+	OSPlatform="x86_64"
+	Is64Bits="1"
+	VendorString="GenuineIntel"
+	VendorID="Intel Corporation"
+	FamilyID="6"
+	ModelID="142"
+	ProcessorCacheSize="6144"
+	NumberOfLogicalCPU="8"
+	NumberOfPhysicalCPU="4"
+	TotalVirtualMemory="8191"
+	TotalPhysicalMemory="7659"
+	LogicalProcessorsPerPhysical="2"
+	ProcessorClockFrequency="1800"
+	>
+	<Testing>
+		<StartDateTime>Aug 14 14:20 +12</StartDateTime>
+		<StartTestTime>1691979617</StartTestTime>
+		<TestList/>
+		<EndDateTime>Aug 14 14:20 +12</EndDateTime>
+		<EndTestTime>1691979617</EndTestTime>
+		<ElapsedMinutes>0</ElapsedMinutes>
+	</Testing>
+</Site>

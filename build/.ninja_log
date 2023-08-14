@@ -1,0 +1,5 @@
+# ninja log v5
+2	1378	1691979555200484046	CMakeFiles/dynamicLib.dir/dynamicLib.cpp.o	5eabcd683e810144
+1379	1466	1691979555267150714	libdynamicLib.a	fc9d34bfc67c034e
+3	1105	1691979673527152768	CMakeFiles/dynamicLib.dir/dynamicLib.cpp.o	5eabcd683e810144
+1106	1188	1691979673580486103	libdynamicLib.a	fc9d34bfc67c034e
