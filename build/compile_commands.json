@@ -1,8 +1,0 @@
-[
-{
-  "directory": "/home/houdini/Cpp/plugins/dynamicLib/simpleDynamicLinking/build",
-  "command": "/usr/bin/clang++ -O3 -DNDEBUG -std=gnu++17 -o CMakeFiles/dynamicLib.dir/dynamicLib.cpp.o -c /home/houdini/Cpp/plugins/dynamicLib/simpleDynamicLinking/dynamicLib.cpp",
-  "file": "/home/houdini/Cpp/plugins/dynamicLib/simpleDynamicLinking/dynamicLib.cpp",
-  "output": "CMakeFiles/dynamicLib.dir/dynamicLib.cpp.o"
-}
-]

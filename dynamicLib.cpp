@@ -32,7 +32,6 @@ struct SharedLibController::SharedLibControllerImpl
     
 };
 
-// уничтожаться должно крайне осторожно
 
 SharedLibController::SharedLibController(const std::string &path) : impl(std::make_unique<SharedLibControllerImpl>())
 {
@@ -48,7 +47,7 @@ bool SharedLibController::isActive() const
 }
 
 void* SharedLibController::GetRawFuncCaller(const std::string& funcName){
-    return dlsym(this->impl->sharedLib, funcName.c_str());
+    return (void*)(dlsym(this->impl->sharedLib, funcName.c_str()));
 }
 
 
