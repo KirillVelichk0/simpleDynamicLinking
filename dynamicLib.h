@@ -53,42 +53,65 @@ public:
     }
 
 
-class SharedLibController{
+class SharedLibController : public std::enable_shared_from_this<SharedLibController>{
 private:
     struct SharedLibControllerImpl;
     std::unique_ptr<SharedLibControllerImpl> impl;
     void* GetRawFuncCaller(const std::string& funcName);
-public:
     SharedLibController(const std::string &path);
+public:
     ~SharedLibController();
     SharedLibController(const SharedLibController& another) = delete;
     SharedLibController(SharedLibController&& another) = delete;
     SharedLibController& operator=(const SharedLibController& another) = delete;
     SharedLibController& operator=(SharedLibController&& another) = delete;
     bool isActive() const;
+    std::shared_ptr<SharedLibController> get_ptr(){
+        return this->shared_from_this();
+    }
+
+    [[nodiscard]]
+    std::shared_ptr<SharedLibController> CreateController(const std::string& path){
+        return std::shared_ptr<SharedLibController>(new SharedLibController(path));
+    }
+
+
+    //возвращает unique_ptr с результируемым типом и классом удаления в шаблоне
+    //лямбда подхватывает экземпляр shared_ptr класса контроллера библиотеки, освобождая его только
+    //при удалении используемого объекта. Это гаранитирует, что библиотека будет освобождена не раньше,
+    //чем будут удалены все экспортированные в нее объекты
     template <class ResultType>
-    std::unique_ptr<ResultType> CallFuncFromName(const std::string &funcName)
+    auto CallFuncFromNameSafe(const std::string &funcName)
     {
-        std::unique_ptr<ResultType> result;
-        std::string fullFuncName = funcName + "_ExternC_ViaDynamicLib";
         static_assert(!std::is_pointer_v<ResultType>,
          "It is add pointer mod auto. Please set not pointer type");
+
+
+        auto self = this->get_ptr();
+        auto deleter = [self](ResultType* deletable)mutable{
+            self = nullptr;
+            delete deletable;
+        };
+        std::unique_ptr<ResultType, decltype(deleter)> result;
+        std::string fullFuncName = funcName + "_ExternC_ViaDynamicLib";
         {
             if (this->isActive())
             {
-                std::cout << "isActive\n";
                 std::any *preResult;
                 auto creater = (void *(*)(void))(this->GetRawFuncCaller(fullFuncName));
                 if (creater != nullptr)
                 {
-                    preResult = reinterpret_cast<std::any *>(creater());
+                    void* rawImported = creater();
+                    if(rawImported == nullptr){
+                        return result;
+                    }
+                    preResult = reinterpret_cast<std::any *>(rawImported);
                     if (preResult->has_value())
                     {
-                        std::cout << "preRes\n";
                         try
                         {
-                            result = std::unique_ptr<ResultType>(std::any_cast<PackedPointer<ResultType*>>(*preResult));
-                            std::cout << "goodCast\n";
+                            auto packedPointer = std::any_cast<PackedPointer<ResultType*>>(*preResult);
+                            result = std::unique_ptr<ResultType>(packedPointer.unpack(), deleter);
                         }
                         catch (std::bad_any_cast &_)
                         {
