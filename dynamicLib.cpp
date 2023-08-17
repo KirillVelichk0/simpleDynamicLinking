@@ -1,5 +1,4 @@
 #include "dynamicLib.h"
-#include <any>
 
 #define LinuxDynamicLib
 
@@ -7,7 +6,7 @@
 
 #include <dlfcn.h>
 
-struct SharedLibController::SharedLibControllerImpl
+struct DynamicLibController::DynamicLibControllerImpl
 {
     void *sharedLib;
     std::string path;
@@ -33,20 +32,20 @@ struct SharedLibController::SharedLibControllerImpl
 };
 
 
-SharedLibController::SharedLibController(const std::string &path) : impl(std::make_unique<SharedLibControllerImpl>())
+DynamicLibController::DynamicLibController(const std::string &path) : impl(std::make_unique<DynamicLibControllerImpl>())
 {
     this->impl->CreateImpl(path);
 }
-SharedLibController::~SharedLibController()
+DynamicLibController::~DynamicLibController()
 {
     this->impl->DestroyImpl();
 }
-bool SharedLibController::isActive() const
+bool DynamicLibController::isActive() const
 {
     return this->impl->isActive();
 }
 
-void* SharedLibController::GetRawFuncCaller(const std::string& funcName){
+void* DynamicLibController::GetRawFuncCaller(const std::string& funcName){
     return (void*)(dlsym(this->impl->sharedLib, funcName.c_str()));
 }
 
