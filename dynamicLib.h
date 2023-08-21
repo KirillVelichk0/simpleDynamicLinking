@@ -4,6 +4,7 @@
 #include <type_traits>
 #include <functional>
 #include <string>
+#include <optional>
 
 using namespace std::string_literals;
 
@@ -16,15 +17,21 @@ template <class T>
 concept PointerConcept = std::is_pointer_v<T>;
 
 class DynamicLibController;
-using SharedLibContoller = std::shared_ptr<DynamicLibController>;
+using SharedLibController = std::shared_ptr<DynamicLibController>;
+
+
+struct ImportError{
+    std::string errorStr;
+};
+
 
 template <class ResultType, class... ArgsType>
 class ImportedFunction{
 private:
     ResultType (*importedFunc)(ArgsType...);
-    SharedLibContoller importedLib;
+    SharedLibController importedLib;
 public:
-    ImportedFunction(ResultType (*importedFunc)(ArgsType...), SharedLibContoller imported = nullptr)
+    ImportedFunction(ResultType (*importedFunc)(ArgsType...), SharedLibController imported = nullptr)
     : importedFunc(importedFunc), importedLib(importedLib) {}
     ResultType operator()(ArgsType... args){
         return this->importedFunc(args...);
@@ -34,19 +41,19 @@ public:
     }
 };
 
-template <NoPointerConcept ImportedObjectType>
+template <NotPointerConcept ImportedObjectType>
 class ImportedObject{
 private:
     std::shared_ptr<ImportedObjectType> importedObject;
     SharedLibController libController;
-    ImportedObject(ImportedObjectType* importedObject, SharedLibContoller lib = nullptr) : importedObject(importedObject), libController(lib){}
+    ImportedObject(ImportedObjectType* importedObject, SharedLibController lib = nullptr) : importedObject(importedObject), libController(lib){}
 public:
     ~ImportedObject() = default;
     ImportedObject(const ImportedObjectType& another) = delete;
     ImportedObject(ImportedObjectType&& another) = delete;
     ImportedObjectType& operator=(const ImportedObjectType& another) = delete;
     ImportedObjectType& operator=(ImportedObjectType&& another) = delete;
-    [[nodiscard]] static std::shared_ptr<ImportedObject> CreateImportedObject(ImportedObjectType* importedObject, SharedLibContoller lib = nullptr){
+    [[nodiscard]] static std::shared_ptr<ImportedObject> CreateImportedObject(ImportedObjectType* importedObject, SharedLibController lib = nullptr){
         return std::shared_ptr<ImportedObject>(new ImportedObject(importedObject, lib));
     }
     //Не сохранять возвращаемый объект в полях!
@@ -63,42 +70,67 @@ template <PointerConcept T>
 class PackedPointer
 {
 private:
+    using DelType = std::optional<void (*)(T val)>;
     T val;
-    void (*deleter)(T);
+    DelType deleter;
 
 public:
     PackedPointer(T val) : val(val) {
-        this->deleter = [](T deletableObject){
-            delete val;
+
+        this->deleter = [](T deletableObject) mutable{
+            delete deletableObject;
         };
     }
     ~PackedPointer()
     {
-        if (deleter != nullptr)
+        if (deleter.has_value())
         {
-            deleter(val);
+            deleter.value()(val);
         }
     }
     [[nodiscard]] T Unpack()
     {
-        deleter = nullptr;
+        deleter.reset();
         return val;
     }
 };
+
+template<class Func>
+constexpr bool IsItNonArgsFunc(Func functionName){
+    constexpr bool isVoidArgs = requires{functionName();};
+    return isVoidArgs;
+}
+
 
 #define GENERATE_SAFE_EXTERN_VOID(function_name)                                  \
     extern "C"                                                               \
     {                                                                        \
         void *function_name##_ExternC_ViaDynamicLib()                        \
-        {                                                                     \
-            constexpr bool isVoidArgs = requires{function_name()};              \
+        {                                                                       \
+            void* result;                                                                \
+            constexpr bool isVoidArgs = IsItNonArgsFunc(&function_name);              \
             static_assert(isVoidArgs, "This is not void args in function");   \
             static_assert(std::is_pointer_v<decltype(function_name())>, "This function must return a pointer");     \
-            std::any *preRes = new std::any(PackedPointer(function_name())); \
-            void *result = reinterpret_cast<void *>(preRes);                 \
+            try{                                                                    \
+                auto pFromFunc = function_name();                        \
+                if(pFromFunc != nullptr){                                                           \
+                    using ResultType = decltype(PackedPointer(pFromFunc));                              \
+                    std::shared_ptr<ResultType> shared_packed_ptr = std::make_shared<ResultType>(PackedPointer(pFromFunc));     \
+                    std::any *preRes = new std::any(shared_packed_ptr); \
+                    result = reinterpret_cast<void *>(preRes);                 \
+                } else{                                                         \
+                    ImportError* error = new ImportError; error->errorStr = "returned nullptr pointer"s; \
+                    result = reinterpret_cast<void*>(error);                   \
+                }                                                                  \
+            } catch(std::exception& ex){                                                    \
+                    ImportError* error = new ImportError; error->errorStr = "Catched exception:\n"s + ex.what();                       \
+                    result = reinterpret_cast<void*>(error);                   \
+                }                                                                               \
+                                                                                                        \
+                                                                                            \
             return result;                                                   \
         }                                                                    \
-    }
+    }\
 
 
 class DynamicLibController : public std::enable_shared_from_this<DynamicLibController>
@@ -155,13 +187,20 @@ private:
         }
         try
         {
-            auto packedPointer = std::any_cast<PackedPointer<ResultType *>>(*preResult);
-            result = packedPointer.unpack();
+            auto packedPointer = std::any_cast<std::shared_ptr<PackedPointer<ResultType *>>>(*preResult);
+            result = packedPointer->Unpack();
         }
         catch (std::bad_any_cast &_)
         {
-            delete preResult;
-            throw std::runtime_error("Something is wrong with imported pointer");
+            try{
+                ImportError err = std::any_cast<ImportError>(*preResult);
+                delete preResult;
+                throw std::runtime_error(err.errorStr);
+            } catch(std::bad_any_cast& _){
+                delete preResult;
+                throw std::runtime_error("Something is wrong with imported pointer");
+            }
+
         }
         delete preResult;
         return result;
@@ -189,7 +228,7 @@ public:
     [[nodiscard]] ImportedFunction<ResultType, ArgsTypes...> GetFuncFromName(const std::string& funcName){
         try{
             void* rawFuncPointer = this->GetFuncRawPointerFromNameInternal(funcName);
-            ResultType (*castedFuncPointer)(ArgsTypes...) = (ResultType(*)(ArgsTypes...)(rawFuncPointer);
+            ResultType (*castedFuncPointer)(ArgsTypes...) = (ResultType(*)(ArgsTypes...))(rawFuncPointer);
             return ImportedFunction<ResultType, ArgsTypes...>(castedFuncPointer, this->get_ptr());
         } catch(std::runtime_error& err){
             throw err;
