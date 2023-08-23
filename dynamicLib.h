@@ -12,7 +12,7 @@ using namespace std::string_literals;
 template <class T>
 concept NotPointerConcept = !std::is_pointer_v<T>;
 
-
+ 
 template <class T>
 concept PointerConcept = std::is_pointer_v<T>;
 
@@ -24,15 +24,15 @@ struct ImportError{
     std::string errorStr;
 };
 
-
+ 
 template <class ResultType, class... ArgsType>
 class ImportedFunction{
 private:
     ResultType (*importedFunc)(ArgsType...);
     SharedLibController importedLib;
 public:
-    ImportedFunction(ResultType (*importedFunc)(ArgsType...), SharedLibController imported = nullptr)
-    : importedFunc(importedFunc), importedLib(importedLib) {}
+    explicit ImportedFunction(ResultType (*importedFunc)(ArgsType...), SharedLibController imported = nullptr)
+    : importedFunc(importedFunc), importedLib(std::move(imported)) {}
     ResultType operator()(ArgsType... args){
         return this->importedFunc(args...);
     }
@@ -46,7 +46,9 @@ class ImportedObject{
 private:
     std::shared_ptr<ImportedObjectType> importedObject;
     SharedLibController libController;
-    ImportedObject(ImportedObjectType* importedObject, SharedLibController lib = nullptr) : importedObject(importedObject), libController(lib){}
+    explicit ImportedObject(ImportedObjectType* importedObject, SharedLibController lib = nullptr) : libController(std::move(lib)){
+        this->importedObject = std::shared_ptr<ImportedObjectType>(importedObject);
+    }
 public:
     ~ImportedObject() = default;
     ImportedObject(const ImportedObjectType& another) = delete;
@@ -56,6 +58,10 @@ public:
     [[nodiscard]] static std::shared_ptr<ImportedObject> CreateImportedObject(ImportedObjectType* importedObject, SharedLibController lib = nullptr){
         return std::shared_ptr<ImportedObject>(new ImportedObject(importedObject, lib));
     }
+    auto GetLib() {
+        return this->libController;
+    }
+
     //Не сохранять возвращаемый объект в полях!
     auto GetImported(){
         return this->importedObject;
@@ -63,7 +69,7 @@ public:
 };
 
 
-
+ 
 
 
 template <PointerConcept T>
@@ -75,14 +81,21 @@ private:
     DelType deleter;
 
 public:
-    PackedPointer(T val) : val(val) {
+    explicit PackedPointer(T val) : val(val) {
 
         this->deleter = [](T deletableObject) mutable{
+            std::cout << "Deleter called" << std::endl;
             delete deletableObject;
         };
     }
+    PackedPointer(PackedPointer&& another) {
+        this->val = another.val;
+        this->deleter = another.deleter;
+        another.deleter.reset();
+    }
     ~PackedPointer()
     {
+        std::cout << "Destructor called" << std::endl;
         if (deleter.has_value())
         {
             deleter.value()(val);
@@ -109,7 +122,8 @@ constexpr bool IsItNonArgsFunc(Func functionName){
         {                                                                       \
             void* result;                                                                \
             constexpr bool isVoidArgs = IsItNonArgsFunc(&function_name);              \
-            static_assert(isVoidArgs, "This is not void args in function");   \
+            static_assert(isVoidArgs, "This is not void args in function");       \
+            static_assert(!std::is_same_v<std::decay_t<decltype(function_name())>, void*>, "Return type can`t be void*");  \
             static_assert(std::is_pointer_v<decltype(function_name())>, "This function must return a pointer");     \
             try{                                                                    \
                 auto pFromFunc = function_name();                        \
@@ -119,12 +133,14 @@ constexpr bool IsItNonArgsFunc(Func functionName){
                     std::any *preRes = new std::any(shared_packed_ptr); \
                     result = reinterpret_cast<void *>(preRes);                 \
                 } else{                                                         \
-                    ImportError* error = new ImportError; error->errorStr = "returned nullptr pointer"s; \
-                    result = reinterpret_cast<void*>(error);                   \
+                    ImportError error; error.errorStr = "returned nullptr pointer"s; \
+                    std::any* preRes = new std::any(error);\
+                    result = reinterpret_cast<void*>(preRes);                   \
                 }                                                                  \
             } catch(std::exception& ex){                                                    \
-                    ImportError* error = new ImportError; error->errorStr = "Catched exception:\n"s + ex.what();                       \
-                    result = reinterpret_cast<void*>(error);                   \
+                    ImportError error; error.errorStr = "Catched exception:\n"s + ex.what();           \
+                    std::any* preRes = new std::any(error);\
+                    result = reinterpret_cast<void*>(preRes);                   \
                 }                                                                               \
                                                                                                         \
                                                                                             \
@@ -139,7 +155,7 @@ private:
     struct DynamicLibControllerImpl;
     std::unique_ptr<DynamicLibControllerImpl> impl;
     void *GetRawFuncCaller(const std::string &funcName);
-    DynamicLibController(const std::string &path);
+    explicit DynamicLibController(const std::string &path);
     std::shared_ptr<DynamicLibController> get_ptr()
     {
         return this->shared_from_this();
@@ -174,7 +190,7 @@ private:
         {
             throw std::runtime_error("Function with name "s + funcName + " does not imported");
         }
-        auto creater = (void *(*)(void))(rawFuncPointer);
+        auto creater = (void *(*)())(rawFuncPointer);
         void *rawImported = creater();
         if (rawImported == nullptr)
         {
@@ -193,7 +209,7 @@ private:
         catch (std::bad_any_cast &_)
         {
             try{
-                ImportError err = std::any_cast<ImportError>(*preResult);
+                auto err = std::any_cast<ImportError>(*preResult);
                 delete preResult;
                 throw std::runtime_error(err.errorStr);
             } catch(std::bad_any_cast& _){
@@ -248,3 +264,5 @@ public:
         }
     }
 };
+
+
