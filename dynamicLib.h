@@ -141,6 +141,10 @@ constexpr bool IsItNonArgsFunc(Func functionName){
                     ImportError error; error.errorStr = "Catched exception:\n"s + ex.what();           \
                     std::any* preRes = new std::any(error);\
                     result = reinterpret_cast<void*>(preRes);                   \
+                } catch(...){                                                     \
+                    ImportError error; error.errorStr = "Catched exception:\n"s;           \
+                    std::any* preRes = new std::any(error);\
+                    result = reinterpret_cast<void*>(preRes); \
                 }                                                                               \
                                                                                                         \
                                                                                             \
@@ -214,7 +218,7 @@ private:
                 throw std::runtime_error(err.errorStr);
             } catch(std::bad_any_cast& _){
                 delete preResult;
-                throw std::runtime_error("Something is wrong with imported pointer");
+                throw std::runtime_error("Uncorrect result type");
             }
 
         }
