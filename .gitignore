@@ -1,4 +1,6 @@
 *vscode*
-build/
+*build/
+.cache/
 *.idea*
+*latex*
 cmake-build-debug/
